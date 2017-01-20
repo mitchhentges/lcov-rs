@@ -1,4 +1,4 @@
-# lcov-rs
+# lcov-rs [![Build Status](https://travis-ci.org/mitchhentges/lcov-rs.svg?branch=master)](https://travis-ci.org/mitchhentges/lcov-rs)
 
 Rust re-implementation of the [`lcov` code-coverage processor](http://ltp.sourceforge.net/coverage/lcov.php). Used
 by the Mozilla "A Team" for tracking code coverage for [Firefox](https://www.mozilla.org/en-US/firefox/new/).
