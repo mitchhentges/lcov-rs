@@ -47,7 +47,7 @@ function _ZNK7mozilla3gfx12ColorPattern7GetTypeEv called 0 returned 0% blocks ex
 ... <snip>
 ```
 Note that the source is copied from the original file (and `gcov` complains loudly when it can't find the original
-source... but still runs, filling in "/*EOF*/" per line). When `lcov` reads this file shortly afterward, it literally
+source... but still runs, filling in `/*EOF*/` per line). When `lcov` reads this file shortly afterward, it literally
 ignores all the source code, and performs a regex search for lines like "function ... called", and then processes that.
 
 ### Optimizations
