@@ -1,6 +1,7 @@
 extern crate byteorder;
 
 use byteorder::{LittleEndian, ByteOrder};
+use std::collections::HashMap;
 use std::convert::From;
 use std::env;
 use std::error::Error;
@@ -11,7 +12,7 @@ use std::str;
 
 const GCNO_MAGIC: u32 = 0x67636e6f;
 const TAG_FUNCTION: u32 = 0x01000000;
-const TAG_LINE_COUNT: u32 = 0x01450000;
+const TAG_LINES: u32 = 0x01450000;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -39,6 +40,7 @@ fn main() {
         let length = LittleEndian::read_u32(&buffer[offset + 4..offset + 8]) * 4; // file gives length in u32 words
 
         offset += 8;
+        let mut lines_map = HashMap::<String, HashMap<String, Vec<u32>>>::new();
 
         let record_offset = match tag {
             TAG_FUNCTION => {
@@ -49,7 +51,13 @@ fn main() {
                 println!("{}|{}|{}", function_record.1.src_path, function_record.1.function_name, function_record.1.line_number);
                 function_record.0
             },
-            TAG_LINE_COUNT => 2,
+            TAG_LINE_COUNT => {
+                let lines_record = match parse_lines_record(&buffer[offset..offset+(length as usize)]) {
+                    Ok(tuple) => tuple,
+                    Err(ParseError { code }) => std::process::exit(code),
+                };
+                0
+            },
             _ => length as usize, // skip record, it's not useful to us
         };
 
@@ -82,6 +90,22 @@ fn parse_function_record(buffer: &[u8]) -> Result<(usize, FunctionRecord), Parse
         function_name: name.to_owned(),
         line_number: line_number,
     }));
+}
+
+fn parse_lines_record(buffer: &[u8], map: &mut HashMap<String, HashMap<String, Vec<u32>>>) -> Result<usize, ParseError> {
+    // skip block index
+    let mut line_offset = 4;
+    loop {
+        let line_no = LittleEndian::read_u32(&buffer[line_offset..4 + line_offset]);
+
+        if line_no == 0 { //new filename
+            let src_path_length = (LittleEndian::read_u32(&buffer[4 + line_offset..8 + line_offset]) * 4) as usize;
+            let src_path = str::from_utf8(&buffer[8 + line_offset..8 + line_offset + src_path_length])?;
+        }
+
+    }
+
+    return Ok(0);
 }
 
 struct FunctionRecord {
