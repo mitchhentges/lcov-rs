@@ -52,7 +52,7 @@ fn main() {
                 function_record.0
             },
             TAG_LINE_COUNT => {
-                let lines_record = match parse_lines_record(&buffer[offset..offset+(length as usize)]) {
+                let lines_record = match parse_lines_record(&buffer[offset..offset+(length as usize)], &mut lines_map) {
                     Ok(tuple) => tuple,
                     Err(ParseError { code }) => std::process::exit(code),
                 };
