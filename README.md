@@ -1,4 +1,4 @@
-# bohemian-waxwing [![Build Status](https://travis-ci.org/mitchhentges/bohemian-waxwing.svg?branch=master)](https://travis-ci.org/mitchhentges/bohemian-waxwing)
+# lcov-rs (Codename `bohemian-waxwing`) [![Build Status](https://travis-ci.org/mitchhentges/lcov-rs.svg?branch=master)](https://travis-ci.org/mitchhentges/lcov-rs)
 
 Rust re-implementation of the [`lcov` code-coverage processor](http://ltp.sourceforge.net/coverage/lcov.php). Used
 by the Mozilla "A Team" for tracking code coverage for [Firefox](https://www.mozilla.org/en-US/firefox/new/).
@@ -9,6 +9,7 @@ This won't be an `lcov` alternative with feature parity. Rather, this will minim
 in processing [`gcov`](https://gcc.gnu.org/onlinedocs/gcc/Gcov.html) data. See
 [`gcov_to_es.py`](https://github.com/klahnakoski/ActiveData-ETL/blob/codecoverage/activedata_etl/transforms/gcov_to_es.py).
 
+* API parity with `lcov`: read from the same `.gcda`/`.gcno` files, produce the same `.info` file
 * Be faster than `lcov`. Ideally by a lot. Gotta go fast.
 * Be more cross-platform than `lcov`. Processing `gcov` data on Windows is a pain, due to `lcov` being written in Perl,
 and being super linux-specific.
@@ -52,14 +53,14 @@ ignores all the source code, and performs a regex search for lines like "functio
 
 ### Optimizations
 
-* `bohemian-waxwing` will read directly from the `gcda` and `gcno` files. This will avoid attempting to read the source
+* `lcov-rs` will read directly from the `gcda` and `gcno` files. This will avoid attempting to read the source
 code file, then throwing it away. Additionally, unlike how `lcov` interacts with `gcov`.
 * Don't save intermediate files. `lcov` uses `gcov` data by invoking it, then reading the intermediate `.gcov` files,
 deleting them afterwards.
 * Read multiple files in parallel, avoiding blocking on file-read as much as possible. Currently, `lcov` reads each
 file sequentially, and blocks.
 
-## Why is this called `bohemian-waxwing`?
+## Why is the codename `bohemian-waxwing`?
 
 I like naming projects after birds (see [Turaco](https://github.com/mitchhentges/turaco#why-is-this-called-turaco) for
 proof). `bohemian-waxwing` was started in Calgary, Canada, and Bohemian Waxwings exist in Calgary.

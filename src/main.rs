@@ -33,7 +33,7 @@ fn main() {
         let offset = 12u8; // Start after magic, version, stamp
 
     } else {
-        println!("Usage: bohemian-waxwing PATH_TO_GCNO");
+        println!("Usage: lcov-rs PATH_TO_GCNO");
     }
 }
 
