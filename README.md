@@ -18,7 +18,7 @@ anymore.
 
 ## Behaviour Difference from `lcov`
 
-`lcov` invokes `gcov` on `gcda` and `gcno` files, then reads the resulting `.gcov` files and scrapes them for the
+`lcov` invokes `gcov` on `.gcda` and `.gcno` files, then reads the resulting `.gcov` files and scrapes them for the
 required data. When invoked, `gcov` finds the original source files to produce the `.gcov` file, that looks like this:
 
 ```
@@ -51,14 +51,20 @@ Note that the source is copied from the original file (and `gcov` complains loud
 source... but still runs, filling in `/*EOF*/` per line). When `lcov` reads this file shortly afterward, it literally
 ignores all the source code, and performs a regex search for lines like "function ... called", and then processes that.
 
+Meanwhile, `lcov-rs` will only read the `.gcda` and `.gcno` files, and will produce the `.info` files from that, without
+any intermediate files, and without any invocation of intermediate tools (like `gcov`).
+
 ### Optimizations
 
-* `lcov-rs` will read directly from the `gcda` and `gcno` files. This will avoid attempting to read the source
-code file, then throwing it away. Additionally, unlike how `lcov` interacts with `gcov`.
+* `lcov-rs` will read directly from the `.gcda` and `.gcno` files. This will avoid attempting to read the source
+code file, then throwing the results away.
 * Don't save intermediate files. `lcov` uses `gcov` data by invoking it, then reading the intermediate `.gcov` files,
-deleting them afterwards.
+deleting them afterwards. `lcov-rs` will read data directly from the `.gcda` and `.gcno` files, and perform any
+processing on its own, in memory.
 * Read multiple files in parallel, avoiding blocking on file-read as much as possible. Currently, `lcov` reads each
-file sequentially, and blocks.
+file sequentially, and blocks. `lcov-rs` will be "preloading" the next `.gcda` and `.gcno` files from disk while
+processing the "current" files. Additionally, `lcov-rs` will work in parallel, parsing and refining the raw data in
+parallel.
 
 ## Why is the codename `bohemian-waxwing`?
 
