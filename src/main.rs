@@ -36,30 +36,37 @@ fn main() {
             Err(ParseError { code }) => std::process::exit(code),
         };
 
-        let tag = LittleEndian::read_u32(&buffer[offset + 0..offset + 4]);
-        let length = LittleEndian::read_u32(&buffer[offset + 4..offset + 8]) * 4; // file gives length in u32 words
+        while offset < buffer.len() {
+            let tag = LittleEndian::read_u32(&buffer[offset + 0..offset + 4]);
+            let length = (LittleEndian::read_u32(&buffer[offset + 4..offset + 8]) * 4) as usize; // file gives length in u32 words
 
-        offset += 8;
-        let mut lines_map = HashMap::<String, HashMap<String, Vec<u32>>>::new();
+            offset += 8;
 
-        let record_offset = match tag {
-            TAG_FUNCTION => {
-                let function_record = match parse_function_record(&buffer[offset..offset+(length as usize)]) {
-                    Ok(tuple) => tuple,
-                    Err(ParseError { code }) => std::process::exit(code),
-                };
-                println!("{}|{}|{}", function_record.1.src_path, function_record.1.function_name, function_record.1.line_number);
-                function_record.0
-            },
-            TAG_LINE_COUNT => {
-                let lines_record = match parse_lines_record(&buffer[offset..offset+(length as usize)], &mut lines_map) {
-                    Ok(tuple) => tuple,
-                    Err(ParseError { code }) => std::process::exit(code),
-                };
-                0
-            },
-            _ => length as usize, // skip record, it's not useful to us
-        };
+            let record_offset = match tag {
+                TAG_FUNCTION => {
+                    let function_record = match parse_function_record(&buffer[offset..offset+(length as usize)]) {
+                        Ok(tuple) => tuple,
+                        Err(ParseError { code }) => std::process::exit(code),
+                    };
+                    println!("{}|{}|{}", function_record.1.line_number, function_record.1.function_name, function_record.1.src_path);
+                    function_record.0
+                },
+                TAG_LINES => {
+                    let lines_record = match parse_lines_record(&buffer[offset..offset+(length as usize)]) {
+                        Ok(tuple) => tuple,
+                        Err(ParseError { code }) => std::process::exit(code),
+                    };
+                    println!("{:#?}", lines_record.1);
+                    lines_record.0
+                },
+                _ => length as usize, // skip record, it's not useful to us
+            };
+            if record_offset != length {
+                println!("!! record_offset != length [{}|{}]", record_offset, length);
+                panic!();
+            }
+            offset += record_offset;
+        }
 
     } else {
         println!("Usage: lcov-rs PATH_TO_GCNO");
@@ -92,20 +99,37 @@ fn parse_function_record(buffer: &[u8]) -> Result<(usize, FunctionRecord), Parse
     }));
 }
 
-fn parse_lines_record(buffer: &[u8], map: &mut HashMap<String, HashMap<String, Vec<u32>>>) -> Result<usize, ParseError> {
+fn parse_lines_record(buffer: &[u8]) -> Result<(usize, HashMap<String, Vec<u32>>), ParseError> {
     // skip block index
+    let mut data: HashMap<String, Vec<u32>> = HashMap::new();
+    let mut current_filename = None::<String>;
     let mut line_offset = 4;
+
     loop {
         let line_no = LittleEndian::read_u32(&buffer[line_offset..4 + line_offset]);
+        line_offset += 4;
 
         if line_no == 0 { //new filename
-            let src_path_length = (LittleEndian::read_u32(&buffer[4 + line_offset..8 + line_offset]) * 4) as usize;
-            let src_path = str::from_utf8(&buffer[8 + line_offset..8 + line_offset + src_path_length])?;
+            let src_path_length = (LittleEndian::read_u32(&buffer[line_offset..4 + line_offset]) * 4) as usize;
+            line_offset += 4;
+
+            // End of lines record
+            if src_path_length == 0 {
+                break;
+            }
+
+            let src_path = str::from_utf8(&buffer[line_offset..line_offset + src_path_length])?;
+            line_offset += src_path_length;
+
+            current_filename = Some(src_path.to_owned());
+            data.insert(src_path.to_owned(), Vec::new());
+        } else {
+            let src_path = current_filename.clone().unwrap();
+            let mut lines = data.get_mut(&src_path).unwrap();
+            lines.push(line_no);
         }
-
     }
-
-    return Ok(0);
+    return Ok((line_offset, data));
 }
 
 struct FunctionRecord {
