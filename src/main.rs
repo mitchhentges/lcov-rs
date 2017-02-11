@@ -80,16 +80,16 @@ fn parse_header(buffer: &[u8]) -> Result<usize, ParseError> {
         return Err(ParseError::new(2));
     };
 
-    println!("version: {}", str::from_utf8(&buffer[4..8])?);
+    println!("version: {}", read_utf8(&buffer[4..8])?);
     return Ok(12); // Read magic, version, skip stamp
 }
 
 fn parse_function_record(buffer: &[u8]) -> Result<(usize, FunctionRecord), ParseError> {
     // Skip identifier, lineno_checksum, cfg_checksum, 12 bytes
     let name_length = (LittleEndian::read_u32(&buffer[12..16]) * 4) as usize;
-    let name = str::from_utf8(&buffer[16..16 + name_length])?;
+    let name = read_utf8(&buffer[16..16 + name_length])?;
     let src_path_length = (LittleEndian::read_u32(&buffer[16 + name_length..20 + name_length]) * 4) as usize;
-    let src_path = str::from_utf8(&buffer[20 + name_length..20 + name_length + src_path_length])?;
+    let src_path = read_utf8(&buffer[20 + name_length..20 + name_length + src_path_length])?;
     let line_number = LittleEndian::read_u32(&buffer[20 + name_length + src_path_length..24 + name_length + src_path_length]) * 4;
 
     return Ok((24 + name_length + src_path_length, FunctionRecord {
@@ -118,7 +118,7 @@ fn parse_lines_record(buffer: &[u8]) -> Result<(usize, HashMap<String, Vec<u32>>
                 break;
             }
 
-            let src_path = str::from_utf8(&buffer[line_offset..line_offset + src_path_length])?;
+            let src_path = read_utf8(&buffer[line_offset..line_offset + src_path_length])?;
             line_offset += src_path_length;
 
             current_filename = Some(src_path.to_owned());
@@ -130,6 +130,15 @@ fn parse_lines_record(buffer: &[u8]) -> Result<(usize, HashMap<String, Vec<u32>>
         }
     }
     return Ok((line_offset, data));
+}
+
+fn read_utf8(buffer: &[u8]) -> Result<&str, str::Utf8Error>  {
+    let mut content_end = buffer.len() - 1;
+    while buffer[content_end] == 0u8 {
+        content_end -= 1;
+    }
+
+    return str::from_utf8(&buffer[0..content_end+1]);
 }
 
 struct FunctionRecord {
