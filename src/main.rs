@@ -100,10 +100,9 @@ fn parse_function_record(buffer: &[u8]) -> Result<(usize, FunctionRecord), Parse
 }
 
 fn parse_lines_record(buffer: &[u8]) -> Result<(usize, HashMap<String, Vec<u32>>), ParseError> {
-    // skip block index
     let mut data: HashMap<String, Vec<u32>> = HashMap::new();
     let mut current_filename = None::<String>;
-    let mut line_offset = 4;
+    let mut line_offset = 4; // skip block index
 
     loop {
         let line_no = LittleEndian::read_u32(&buffer[line_offset..4 + line_offset]);
