@@ -90,7 +90,7 @@ fn parse_function_record(buffer: &[u8]) -> Result<(usize, FunctionRecord), Parse
     let name = read_utf8(&buffer[16..16 + name_length])?;
     let src_path_length = (LittleEndian::read_u32(&buffer[16 + name_length..20 + name_length]) * 4) as usize;
     let src_path = read_utf8(&buffer[20 + name_length..20 + name_length + src_path_length])?;
-    let line_number = LittleEndian::read_u32(&buffer[20 + name_length + src_path_length..24 + name_length + src_path_length]) * 4;
+    let line_number = LittleEndian::read_u32(&buffer[20 + name_length + src_path_length..24 + name_length + src_path_length]);
 
     return Ok((24 + name_length + src_path_length, FunctionRecord {
         src_path: src_path.to_owned(),
