@@ -18,59 +18,67 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if let Some(gcno_path) = args.get(1) {
-        println!("Opening gcno file: {}", &gcno_path);
-        let path = Path::new(&gcno_path);
-        let mut file = match File::open(&path) {
-            Err(e) => {
-                writeln!(std::io::stderr(), "Failed to open {}:{}", &gcno_path, e.description()).unwrap();
-                std::process::exit(1);
-            }
-            Ok(file) => file
-        };
-
-        let mut buffer = Vec::<u8>::new();
-        file.read_to_end(&mut buffer).unwrap();
-
-        let mut offset = match parse_header(&buffer) {
-            Ok(offset) => offset,
-            Err(ParseError { code }) => std::process::exit(code),
-        };
-
-        while offset < buffer.len() {
-            let tag = LittleEndian::read_u32(&buffer[offset + 0..offset + 4]);
-            let length = (LittleEndian::read_u32(&buffer[offset + 4..offset + 8]) * 4) as usize; // file gives length in u32 words
-
-            offset += 8;
-
-            let record_offset = match tag {
-                TAG_FUNCTION => {
-                    let function_record = match parse_function_record(&buffer[offset..offset+(length as usize)]) {
-                        Ok(tuple) => tuple,
-                        Err(ParseError { code }) => std::process::exit(code),
-                    };
-                    println!("{}|{}|{}|{}", function_record.1.line_number, function_record.1.identifier, function_record.1.function_name, function_record.1.src_path);
-                    function_record.0
-                },
-                TAG_LINES => {
-                    let lines_record = match parse_lines_record(&buffer[offset..offset+(length as usize)]) {
-                        Ok(tuple) => tuple,
-                        Err(ParseError { code }) => std::process::exit(code),
-                    };
-                    println!("{:?}", lines_record.1);
-                    lines_record.0
-                },
-                _ => length as usize, // skip record, it's not useful to us
-            };
-            if record_offset != length {
-                println!("!! record_offset != length [{}|{}]", record_offset, length);
-                panic!();
-            }
-            offset += record_offset;
-        }
-
+        let function_records = read_gcno(gcno_path);
+        println!("function_records = {:#?}", function_records);
     } else {
         println!("Usage: lcov-rs PATH_TO_GCNO");
     }
+}
+
+/// Returns a Vec<FunctionRecord> sorted by identifier
+fn read_gcno(gcno_path: &str) -> Vec<FunctionRecord> {
+    println!("Opening gcno file: {}", &gcno_path);
+    let path = Path::new(&gcno_path);
+    let mut file = match File::open(&path) {
+        Err(e) => {
+            writeln!(std::io::stderr(), "Failed to open {}:{}", &gcno_path, e.description()).unwrap();
+            std::process::exit(1);
+        }
+        Ok(file) => file
+    };
+
+    let mut function_records = Vec::<FunctionRecord>::new();
+    let mut buffer = Vec::<u8>::new();
+    file.read_to_end(&mut buffer).unwrap();
+
+    let mut offset = match parse_header(&buffer) {
+        Ok(offset) => offset,
+        Err(ParseError { code }) => std::process::exit(code),
+    };
+
+    while offset < buffer.len() {
+        let tag = LittleEndian::read_u32(&buffer[offset + 0..offset + 4]);
+        let length = (LittleEndian::read_u32(&buffer[offset + 4..offset + 8]) * 4) as usize; // file gives length in u32 words
+
+        offset += 8;
+
+        let record_offset = match tag {
+            TAG_FUNCTION => {
+                let function_record = match parse_function_record(&buffer[offset..offset+(length as usize)]) {
+                    Ok(tuple) => tuple,
+                    Err(ParseError { code }) => std::process::exit(code),
+                };
+                function_records.push(function_record.1);
+                function_record.0
+            },
+            TAG_LINES => {
+                let lines_record = match parse_lines_record(&buffer[offset..offset+(length as usize)]) {
+                    Ok(tuple) => tuple,
+                    Err(ParseError { code }) => std::process::exit(code),
+                };
+                lines_record.0
+            },
+            _ => length as usize, // skip record, it's not useful to us
+        };
+        if record_offset != length {
+            println!("!! record_offset != length [{}|{}]", record_offset, length);
+            panic!();
+        }
+        offset += record_offset;
+    }
+
+    function_records.sort_by_key(|r| r.identifier);
+    return function_records;
 }
 
 fn parse_header(buffer: &[u8]) -> Result<usize, ParseError> {
@@ -145,6 +153,7 @@ fn read_utf8(buffer: &[u8]) -> Result<&str, str::Utf8Error>  {
     return str::from_utf8(&buffer[0..content_end+1]);
 }
 
+#[derive(Debug)]
 struct FunctionRecord {
     identifier: u32,
     line_number_checksum: u32,
