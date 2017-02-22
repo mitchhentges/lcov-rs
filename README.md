@@ -7,7 +7,7 @@ by the Mozilla "A Team" for tracking code coverage for [Firefox](https://www.moz
 
 This won't be an `lcov` alternative with feature parity. Rather, this will minimally fulfill the role that `lcov` plays
 in processing [`gcov`](https://gcc.gnu.org/onlinedocs/gcc/Gcov.html) data. See
-[`gcov_to_es.py`](https://github.com/klahnakoski/ActiveData-ETL/blob/codecoverage/activedata_etl/transforms/gcov_to_es.py).
+[`gcov_to_es.py`](https://github.com/klahnakoski/ActiveData-ETL/blob/codecoverage/activedata_etl/transforms/gcov_to_es.py#L335).
 
 * API parity with `lcov`: read from the same `.gcda`/`.gcno` files, produce the same `.info` file
 * Be faster than `lcov`. Ideally by a lot. Gotta go fast.

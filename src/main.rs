@@ -48,7 +48,7 @@ fn main() {
                         Ok(tuple) => tuple,
                         Err(ParseError { code }) => std::process::exit(code),
                     };
-                    println!("{}|{}|{}", function_record.1.line_number, function_record.1.function_name, function_record.1.src_path);
+                    println!("{}|{}|{}|{}", function_record.1.line_number, function_record.1.identifier, function_record.1.function_name, function_record.1.src_path);
                     function_record.0
                 },
                 TAG_LINES => {
@@ -56,7 +56,7 @@ fn main() {
                         Ok(tuple) => tuple,
                         Err(ParseError { code }) => std::process::exit(code),
                     };
-                    println!("{:#?}", lines_record.1);
+                    println!("{:?}", lines_record.1);
                     lines_record.0
                 },
                 _ => length as usize, // skip record, it's not useful to us
@@ -85,7 +85,9 @@ fn parse_header(buffer: &[u8]) -> Result<usize, ParseError> {
 }
 
 fn parse_function_record(buffer: &[u8]) -> Result<(usize, FunctionRecord), ParseError> {
-    // Skip identifier, lineno_checksum, cfg_checksum, 12 bytes
+    let identifier = LittleEndian::read_u32(&buffer[0..4]);
+    let line_number_checksum = LittleEndian::read_u32(&buffer[4..8]);
+    let config_checksum = LittleEndian::read_u32(&buffer[8..12]);
     let name_length = (LittleEndian::read_u32(&buffer[12..16]) * 4) as usize;
     let name = read_utf8(&buffer[16..16 + name_length])?;
     let src_path_length = (LittleEndian::read_u32(&buffer[16 + name_length..20 + name_length]) * 4) as usize;
@@ -93,6 +95,9 @@ fn parse_function_record(buffer: &[u8]) -> Result<(usize, FunctionRecord), Parse
     let line_number = LittleEndian::read_u32(&buffer[20 + name_length + src_path_length..24 + name_length + src_path_length]);
 
     return Ok((24 + name_length + src_path_length, FunctionRecord {
+        identifier: identifier,
+        line_number_checksum: line_number_checksum,
+        config_checksum: config_checksum,
         src_path: src_path.to_owned(),
         function_name: name.to_owned(),
         line_number: line_number,
@@ -141,6 +146,9 @@ fn read_utf8(buffer: &[u8]) -> Result<&str, str::Utf8Error>  {
 }
 
 struct FunctionRecord {
+    identifier: u32,
+    line_number_checksum: u32,
+    config_checksum: u32,
     src_path: String,
     function_name: String,
     line_number: u32,
