@@ -10,18 +10,21 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::str;
 
+const GCDA_MAGIC: u32 = 0x67636461;
 const GCNO_MAGIC: u32 = 0x67636e6f;
 const TAG_FUNCTION: u32 = 0x01000000;
 const TAG_LINES: u32 = 0x01450000;
+const TAG_END_FILE: u32 = 0x00000000;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if let Some(gcno_path) = args.get(1) {
-        let function_records = read_gcno(gcno_path);
-        println!("function_records = {:#?}", function_records);
+    if let (Some(gcda_path), Some(gcno_path)) = (args.get(1), args.get(2)) {
+        //let function_records = read_gcno(gcno_path);
+        //println!("function_records = {:#?}", function_records);
+        read_gcda(gcda_path);
     } else {
-        println!("Usage: lcov-rs PATH_TO_GCNO");
+        println!("Usage: lcov-rs GCDA_PATH GCNO_PATH");
     }
 }
 
@@ -41,7 +44,7 @@ fn read_gcno(gcno_path: &str) -> Vec<FunctionRecord> {
     let mut buffer = Vec::<u8>::new();
     file.read_to_end(&mut buffer).unwrap();
 
-    let mut offset = match parse_header(&buffer) {
+    let mut offset = match parse_gcno_header(&buffer) {
         Ok(offset) => offset,
         Err(ParseError { code }) => std::process::exit(code),
     };
@@ -68,20 +71,75 @@ fn read_gcno(gcno_path: &str) -> Vec<FunctionRecord> {
                 };
                 lines_record.0
             },
+            TAG_END_FILE => {
+                break;
+            },
             _ => length as usize, // skip record, it's not useful to us
         };
         if record_offset != length {
             println!("!! record_offset != length [{}|{}]", record_offset, length);
             panic!();
         }
-        offset += record_offset;
+        offset += if record_offset != 0 { record_offset } else { 1 * 4 };
     }
 
     function_records.sort_by_key(|r| r.identifier);
     return function_records;
 }
 
-fn parse_header(buffer: &[u8]) -> Result<usize, ParseError> {
+fn read_gcda(gcda_path: &str) {
+    println!("Opening gcda file: {}", &gcda_path);
+    let path = Path::new(&gcda_path);
+    let mut file = match File::open(&path) {
+        Err(e) => {
+            writeln!(std::io::stderr(), "Failed to open {}:{}", &gcda_path, e.description()).unwrap();
+            std::process::exit(1);
+        }
+        Ok(file) => file
+    };
+
+    let mut buffer = Vec::<u8>::new();
+    file.read_to_end(&mut buffer).unwrap();
+
+    let mut offset = match parse_gcda_header(&buffer) {
+        Ok(offset) => offset,
+        Err(ParseError { code }) => std::process::exit(code),
+    };
+
+    while offset < buffer.len() {
+        let tag = LittleEndian::read_u32(&buffer[offset + 0..offset + 4]);
+        let length = (LittleEndian::read_u32(&buffer[offset + 4..offset + 8]) * 4) as usize; // file gives length in u32 words
+
+        println!("## {:03X}|{:08X}|{:03X}", offset, tag, length);
+        offset += 8;
+
+        let record_offset = match tag {
+            TAG_END_FILE => {
+                break;
+            },
+            _ => length as usize, // skip record, it's not useful to us
+        };
+
+        if record_offset != length {
+            println!("!! record_offset != length [{}|{}]", record_offset, length);
+            panic!();
+        }
+        offset += if record_offset != 0 { record_offset } else { 1 * 4 };
+    }
+}
+
+fn parse_gcda_header(buffer: &[u8]) -> Result<usize, ParseError> {
+    if GCDA_MAGIC != LittleEndian::read_u32(&buffer[0..4]) {
+        writeln!(std::io::stderr(),
+                 "Invalid magic bytes. Could be an endian issue if on non-Linux").unwrap();
+        return Err(ParseError::new(2));
+    };
+
+    println!("version: {}", read_utf8(&buffer[4..8])?);
+    return Ok(12); // Read magic, version, skip stamp
+}
+
+fn parse_gcno_header(buffer: &[u8]) -> Result<usize, ParseError> {
     if GCNO_MAGIC != LittleEndian::read_u32(&buffer[0..4]) {
         writeln!(std::io::stderr(),
                  "Invalid magic bytes. Could be an endian issue if on non-Linux").unwrap();
