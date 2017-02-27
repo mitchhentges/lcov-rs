@@ -20,9 +20,9 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if let (Some(gcda_path), Some(gcno_path)) = (args.get(1), args.get(2)) {
-        //let function_records = read_gcno(gcno_path);
+        let function_records = read_gcno(gcno_path);
         //println!("function_records = {:#?}", function_records);
-        read_gcda(gcda_path);
+        //read_gcda(gcda_path);
     } else {
         println!("Usage: lcov-rs GCDA_PATH GCNO_PATH");
     }
@@ -160,14 +160,18 @@ fn parse_function_record(buffer: &[u8]) -> Result<(usize, FunctionRecord), Parse
     let src_path = read_utf8(&buffer[20 + name_length..20 + name_length + src_path_length])?;
     let line_number = LittleEndian::read_u32(&buffer[20 + name_length + src_path_length..24 + name_length + src_path_length]);
 
-    return Ok((24 + name_length + src_path_length, FunctionRecord {
+    let function_record = FunctionRecord {
         identifier: identifier,
         line_number_checksum: line_number_checksum,
         config_checksum: config_checksum,
         src_path: src_path.to_owned(),
         function_name: name.to_owned(),
         line_number: line_number,
-    }));
+    };
+
+    println!("function_record = {:#?}", function_record);
+
+    return Ok((24 + name_length + src_path_length, function_record));
 }
 
 fn parse_lines_record(buffer: &[u8]) -> Result<(usize, HashMap<String, Vec<u32>>), ParseError> {
@@ -199,6 +203,7 @@ fn parse_lines_record(buffer: &[u8]) -> Result<(usize, HashMap<String, Vec<u32>>
             lines.push(line_no);
         }
     }
+    println!("Lines {:#?}", data);
     return Ok((line_offset, data));
 }
 
