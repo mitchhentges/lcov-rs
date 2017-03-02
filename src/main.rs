@@ -1,6 +1,7 @@
 extern crate byteorder;
 
 use byteorder::{LittleEndian, ByteOrder};
+use std::collections::HashMap;
 use std::convert::From;
 use std::env;
 use std::error::Error;
@@ -18,19 +19,21 @@ const TAG_ARCS: u32 = 0x01430000;
 const TAG_LINES: u32 = 0x01450000;
 const TAG_END_FILE: u32 = 0x00000000;
 
+const ARC_ON_TREE: u32 = 1 << 0;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
     if let (Some(gcda_path), Some(gcno_path)) = (args.get(1), args.get(2)) {
-        read_gcno(gcno_path);
-        read_gcda(gcda_path);
+        let graph_data = read_gcno(gcno_path);
+        read_gcda(gcda_path, graph_data, "/home/mitch/lcov-rs-out");
     } else {
         println!("Usage: lcov-rs GCDA_PATH GCNO_PATH");
     }
 }
 
 /// Returns a Vec<FunctionRecord> sorted by identifier
-fn read_gcno(gcno_path: &str) {
+fn read_gcno(gcno_path: &str) -> GraphData {
     println!("Opening gcno file: {}", &gcno_path);
     let path = Path::new(&gcno_path);
     let mut file = match File::open(&path) {
@@ -41,7 +44,11 @@ fn read_gcno(gcno_path: &str) {
         Ok(file) => file
     };
 
-    let mut function_definitions = Vec::<FunctionDefinition>::new();
+    let mut functions = Vec::<FunctionDefinition>::new();
+    let mut blocks = Vec::<BlockRecord>::new();
+    let mut lines = Vec::<LineRecord>::new();
+    let mut arcs = Vec::<ArcRecord>::new();
+
     let mut buffer = Vec::<u8>::new();
     file.read_to_end(&mut buffer).unwrap();
 
@@ -65,15 +72,17 @@ fn read_gcno(gcno_path: &str) {
                     Err(ParseError { code }) => std::process::exit(code),
                 };
                 current_function_id = Some(function_definition.1.identifier);
-                function_definitions.push(function_definition.1);
+                functions.push(function_definition.1);
                 function_definition.0
             },
             TAG_BLOCKS => {
                 let block_records = parse_blocks_record(record_buffer, current_function_id.unwrap());
+                blocks.extend(block_records.1);
                 block_records.0
             }
             TAG_ARCS => {
                 let arc_records = parse_arcs_record(record_buffer, current_function_id.unwrap());
+                arcs.extend(arc_records.1);
                 arc_records.0
             }
             TAG_LINES => {
@@ -81,6 +90,7 @@ fn read_gcno(gcno_path: &str) {
                     Ok(tuple) => tuple,
                     Err(ParseError { code }) => std::process::exit(code),
                 };
+                lines.extend(line_records.1);
                 line_records.0
             },
             TAG_END_FILE => {
@@ -95,10 +105,15 @@ fn read_gcno(gcno_path: &str) {
         offset += if record_offset != 0 { record_offset } else { 1 * 4 };
     }
 
-    function_definitions.sort_by_key(|r| r.identifier);
+    return GraphData {
+        functions: functions,
+        blocks: blocks,
+        arcs: arcs,
+        lines: lines,
+    }
 }
 
-fn read_gcda(gcda_path: &str) {
+fn read_gcda(gcda_path: &str, graph_data: GraphData, tmp_output_path: &str) {
     println!("Opening gcda file: {}", &gcda_path);
     let path = Path::new(&gcda_path);
     let mut file = match File::open(&path) {
@@ -109,6 +124,8 @@ fn read_gcda(gcda_path: &str) {
         Ok(file) => file
     };
 
+    let mut output_file = File::create(Path::new(tmp_output_path)).unwrap();
+
     let mut buffer = Vec::<u8>::new();
     file.read_to_end(&mut buffer).unwrap();
 
@@ -117,7 +134,9 @@ fn read_gcda(gcda_path: &str) {
         Err(ParseError { code }) => std::process::exit(code),
     };
 
+    output_file.write_all(b"TN:\n");
     let mut current_function_id = None::<u32>;
+    let mut counts_records = Vec::<CountsRecord>::new();
 
     while offset < buffer.len() {
         let tag = LittleEndian::read_u32(&buffer[offset + 0..offset + 4]);
@@ -128,12 +147,15 @@ fn read_gcda(gcda_path: &str) {
 
         let record_offset = match tag {
             TAG_FUNCTION => {
+                println!(">> TAG_FUNCTION");
                 let function_reference = parse_function_reference(record_buffer);
                 current_function_id = Some(function_reference.1.identifier);
                 function_reference.0
             },
             TAG_COUNTS => {
+                println!(">> TAG_COUNTS");
                 let counts_record = parse_counts_record(record_buffer, current_function_id.unwrap());
+                counts_records.push(counts_record.1);
                 counts_record.0
             }
             TAG_END_FILE => {
@@ -146,6 +168,29 @@ fn read_gcda(gcda_path: &str) {
             panic!();
         }
         offset += if record_offset != 0 { record_offset } else { 1 * 4 };
+    }
+
+    let mut source_files: Vec<String> = (*graph_data.lines).into_iter()
+            .map(|x| x.src_path.clone())
+            .collect();
+    source_files.sort();
+    source_files.dedup();
+    for src in source_files {
+        print_lcov_output(src, &graph_data, &mut output_file);
+    }
+}
+
+fn print_lcov_output<T>(src_path: String, graph_data: &GraphData, output_file: &mut T)
+    where T: Write {
+    output_file.write_all(("file:".to_string() + src_path.as_str() + "\n").as_bytes());
+
+    for function in (*graph_data.functions).iter()
+            .filter(|x| x.src_path == src_path) {
+        output_file.write_all(("function:".to_string() + "0" + "," + function.name.as_str() + "\n").as_bytes());
+        for block in (*graph_data.blocks).iter()
+            .filter(|x| x.function_id == function.identifier) {
+
+        }
     }
 }
 
@@ -187,7 +232,7 @@ fn parse_function_definition(buffer: &[u8]) -> Result<(usize, FunctionDefinition
         line_number_checksum: line_number_checksum,
         config_checksum: config_checksum,
         src_path: src_path.to_owned(),
-        function_name: name.to_owned(),
+        name: name.to_owned(),
         line_number: line_number,
     };
 
@@ -234,22 +279,25 @@ fn parse_lines_record(buffer: &[u8], function_id: u32)
 
     loop {
         let line_no = LittleEndian::read_u32(&buffer[0+line_offset..4+line_offset]);
+        println!("line_no: {}", line_no);
 
         if line_no == 0 { // new filename
             let src_path_length = (LittleEndian::read_u32(&buffer[4+line_offset..8+line_offset]) * 4) as usize;
             // End of lines record
             if src_path_length == 0 {
+                println!("We done here");
                 line_offset += 8;
                 break;
             }
 
             let src_path = read_utf8(&buffer[8+line_offset..8+line_offset + src_path_length])?;
+            println!("src_path: {}", src_path);
             current_src_path = Some(src_path.to_string());
             line_offset += 8 + src_path_length;
         } else {
             line_records.push(LineRecord {
                 function_id: function_id,
-                source_path: current_src_path.clone().unwrap(),
+                src_path: current_src_path.clone().unwrap(),
                 block: block,
                 line_number: line_no
             });
@@ -309,14 +357,11 @@ fn read_utf8(buffer: &[u8]) -> Result<&str, str::Utf8Error>  {
     return str::from_utf8(&buffer[0..content_end+1]);
 }
 
-#[derive(Debug)]
-struct FunctionDefinition {
-    identifier: u32,
-    line_number_checksum: u32,
-    config_checksum: u32,
-    src_path: String,
-    function_name: String,
-    line_number: u32,
+struct GraphData {
+    functions: Vec<FunctionDefinition>,
+    blocks: Vec<BlockRecord>,
+    lines: Vec<LineRecord>,
+    arcs: Vec<ArcRecord>
 }
 
 #[derive(Debug)]
@@ -336,6 +381,16 @@ struct CountsRecord {
 }
 
 #[derive(Debug)]
+struct FunctionDefinition {
+    identifier: u32,
+    line_number_checksum: u32,
+    config_checksum: u32,
+    src_path: String,
+    name: String,
+    line_number: u32,
+}
+
+#[derive(Debug)]
 struct BlockRecord {
     index: u32,
     function_id: u32,
@@ -344,7 +399,7 @@ struct BlockRecord {
 #[derive(Debug)]
 struct LineRecord {
     function_id: u32,
-    source_path: String,
+    src_path: String,
     block: u32,
     line_number: u32,
 }
@@ -355,6 +410,12 @@ struct ArcRecord {
     source_block: u32,
     destination_block: u32,
     flags: u32,
+}
+
+impl ArcRecord {
+    fn is_on_tree(&self) -> bool {
+        return self.flags & ARC_ON_TREE > 0;
+    }
 }
 
 struct ParseError {
