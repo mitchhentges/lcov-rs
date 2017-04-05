@@ -5,3 +5,4 @@ authors = ["Mitchell Hentges <mitch9654@gmail.com>"]
 
 [dependencies]
 byteorder = "1.0"
+itertools = "0.5"
